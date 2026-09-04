@@ -1,0 +1,17 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          { "path": "dist/testpulse-gtest-linux", "label": "testpulse-gtest (Linux x64)" },
+          { "path": "dist/testpulse-gtest-macos", "label": "testpulse-gtest (macOS)" },
+          { "path": "dist/testpulse-gtest-windows.exe", "label": "testpulse-gtest (Windows x64)" }
+        ]
+      }
+    ]
+  ]
+}

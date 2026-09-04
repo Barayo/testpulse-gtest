@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build-binaries:
+    if: github.repository == 'Barayo/testpulse-gtest'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: testpulse-gtest-linux
+          - os: macos-latest
+            asset_name: testpulse-gtest-macos
+          - os: windows-latest
+            asset_name: testpulse-gtest-windows.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libcurl dev headers (Linux only)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+      - name: Install curl via vcpkg (Windows only)
+        if: runner.os == 'Windows'
+        run: |
+          vcpkg install curl:x64-windows
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTESTPULSE_GTEST_BUILD_TESTS=OFF -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+      - name: Configure (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTESTPULSE_GTEST_BUILD_TESTS=OFF
+      - name: Build
+        run: cmake --build build --config Release --parallel --target testpulse-gtest
+      - name: Stage binary (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: cp build/cli/testpulse-gtest ${{ matrix.asset_name }}
+      - name: Stage binary (Windows)
+        if: runner.os == 'Windows'
+        run: cp build/cli/Release/testpulse-gtest.exe ${{ matrix.asset_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    if: github.repository == 'Barayo/testpulse-gtest'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Semantic release (version, changelog, tag, GitHub release with attached binaries)
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/commit-analyzer
+            @semantic-release/release-notes-generator
+            @semantic-release/github
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
