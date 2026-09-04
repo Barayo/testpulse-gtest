@@ -1,0 +1,5 @@
+foreach(fixture tagged_fixture cross_test_fixture multi_attach_fixture)
+    add_executable(${fixture} ${fixture}.cc)
+    target_link_libraries(${fixture} PRIVATE testpulse::testpulse gtest gtest_main)
+    target_compile_features(${fixture} PRIVATE cxx_std_17)
+endforeach()
