@@ -15,7 +15,9 @@ std::string ResolveRequired(const std::optional<std::string>& flag, const GetEnv
     if (fromEnv != nullptr) {
         return std::string(fromEnv);
     }
-    throw std::invalid_argument(std::string("testpulse: ") + settingName +
+    // No "testpulse: " prefix here -- main.cc's catch site already adds
+    // one when printing this message, so prefixing it here doubled it.
+    throw std::invalid_argument(std::string(settingName) +
                                  " is required (set the corresponding flag, or " + envName + ")");
 }
 

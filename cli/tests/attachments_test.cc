@@ -55,3 +55,58 @@ TEST(AttachmentsTest, NoAttachmentsReturnsEmpty) {
     fs::create_directories(root);
     EXPECT_TRUE(ReadAttachments(root.string()).empty());
 }
+
+// A test binary killed mid-write (CI timeout, OOM-kill, disk full) can
+// leave a genuinely truncated/malformed .json sidecar on disk -- this is
+// a real, ordinary CI failure mode, not just an adversarial input.
+TEST(AttachmentsTest, MalformedJsonSidecarIsSkippedNotThrown) {
+    fs::path root = fs::temp_directory_path() / "testpulse_cli_attach_malformed";
+    fs::remove_all(root);
+    fs::path dir = root / ".testpulse" / "attachments";
+    fs::create_directories(dir);
+    {
+        std::ofstream badMeta(dir / "broken.json");
+        badMeta << "not valid json {{{";
+    }  // closed here, so the write is flushed before ReadAttachments reads it
+
+    EXPECT_NO_THROW({
+        auto attachments = ReadAttachments(root.string());
+        EXPECT_TRUE(attachments.empty());
+    });
+}
+
+TEST(AttachmentsTest, SidecarMissingARequiredFieldIsSkippedNotThrown) {
+    fs::path root = fs::temp_directory_path() / "testpulse_cli_attach_missing_field";
+    fs::remove_all(root);
+    fs::path dir = root / ".testpulse" / "attachments";
+    fs::create_directories(dir);
+    {
+        std::ofstream meta(dir / "incomplete.json");
+        meta << R"({"caseKey":"LOGIN-42"})";  // missing filename/contentType
+        // A companion .data file must exist too, or ReadAttachments skips
+        // this entry before ever reaching the missing-field .at() calls --
+        // this is the actual path under test, not the missing-data-file one.
+        std::ofstream data(dir / "incomplete.data", std::ios::binary);
+        data << "x";
+    }
+
+    EXPECT_NO_THROW({
+        auto attachments = ReadAttachments(root.string());
+        EXPECT_TRUE(attachments.empty());
+    });
+}
+
+TEST(AttachmentsTest, ValidAttachmentsSurviveAlongsideAMalformedOne) {
+    fs::path root = fs::temp_directory_path() / "testpulse_cli_attach_mixed";
+    fs::remove_all(root);
+    fs::path dir = root / ".testpulse" / "attachments";
+    WriteSidecar(dir, "good", "LOGIN-1", "a.png", "image/png", {0x01});
+    {
+        std::ofstream badMeta(dir / "bad.json");
+        badMeta << "not valid json {{{";
+    }
+
+    auto attachments = ReadAttachments(root.string());
+    ASSERT_EQ(attachments.size(), 1u);
+    EXPECT_EQ(attachments[0].caseKey, "LOGIN-1");
+}

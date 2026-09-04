@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <testpulse_cli/submit.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -147,6 +149,40 @@ TEST(SubmitTest, DryRunFetchFailureExitsNonZero) {
     config.dryRun = true;
     int code = RunSubmit(config, WriteTempReport(kSimpleReport), client, out, err);
     EXPECT_NE(code, 0);
+}
+
+// A shared CI workspace can have stale .testpulse/attachments left over
+// from an unrelated earlier test binary/run -- ReadAttachments has no
+// awareness of which report is currently being submitted, so submit()
+// itself must filter to only the case keys the CURRENT report actually
+// declares, or a stale attachment silently rides along into an unrelated
+// submission (confirmed as a real bug: a live server correctly rejected
+// a submission this way with "attachment is not a supported image
+// format" for a report that never called Attach() at all).
+TEST(SubmitTest, OnlyAttachmentsForCaseKeysInThisReportAreSubmitted) {
+    fs::path dir = fs::temp_directory_path() / "testpulse_cli_submit_stale_attach";
+    fs::remove_all(dir);
+    fs::path attachDir = dir / ".testpulse" / "attachments";
+    fs::create_directories(attachDir);
+    {
+        std::ofstream dataFile(attachDir / "stale.data", std::ios::binary);
+        dataFile << "x";
+        std::ofstream metaFile(attachDir / "stale.json");
+        metaFile << R"({"caseKey":"OTHER-99","filename":"a.png","contentType":"image/png"})";
+    }
+
+    FakeHttpClient client;
+    client.onPost = [](const std::string&, const std::string&, const std::string&) {
+        return HttpResponse{201, R"({"id":"r1","key":"LOGIN-R1"})", false, ""};
+    };
+    std::ostringstream out, err;
+    Config config = MinimalConfig();
+    config.dir = dir.string();
+    RunSubmit(config, WriteTempReport(kSimpleReport), client, out, err);
+
+    nlohmann::json body = nlohmann::json::parse(client.lastPostBody);
+    EXPECT_TRUE(body.at("attachments").empty())
+        << "stale OTHER-99 attachment should have been excluded: " << client.lastPostBody;
 }
 
 TEST(SubmitTest, TokenNeverAppearsInOutput) {

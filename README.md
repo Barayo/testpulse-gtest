@@ -32,6 +32,7 @@ FetchContent_Declare(
     GIT_TAG v1.0.0  # always pin to a released tag, never `main`
 )
 set(TESTPULSE_GTEST_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(TESTPULSE_GTEST_BUILD_CLI OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(testpulse_gtest)
 
 target_link_libraries(your_test_target PRIVATE testpulse::testpulse)
@@ -43,6 +44,15 @@ has no immutable, content-addressed version resolution of its own — a
 `GIT_TAG main` example resolves to whatever the default branch happens to
 point at when your build runs, with no version pinning at all. This is a
 real supply-chain footgun, not a style preference.
+
+**`TESTPULSE_GTEST_BUILD_CLI` defaults to `ON`.** Without setting it to
+`OFF` as shown above, `FetchContent_MakeAvailable` also fetches `libcurl`/
+`nlohmann/json` and builds the `submit` CLI inside your own build tree —
+harmless, but unexpected if you only wanted the header-only tagging
+library. You don't need to build the CLI yourself at all: download a
+prebuilt binary from the
+[latest release](https://github.com/Barayo/testpulse-gtest/releases)
+instead (see below).
 
 Download `testpulse-gtest` (the submit CLI) from the
 [latest release](https://github.com/Barayo/testpulse-gtest/releases) for

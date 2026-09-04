@@ -92,10 +92,26 @@ int RunDryRun(const Config& config, const std::string& reportXml, HttpClient& cl
 
 int RunRealSubmit(const Config& config, const std::string& reportXml, HttpClient& client,
                    std::ostream& out, std::ostream& err) {
+    // ReadAttachments has no awareness of which report is being
+    // submitted -- it recursively scans all of config.dir, so a stale
+    // .testpulse/attachments left over from an unrelated earlier test
+    // binary/run (a real, ordinary occurrence in a shared CI workspace,
+    // not just a contrived scenario) would otherwise silently ride along
+    // into this submission. Filtering to only the case keys THIS report
+    // actually declares is what makes ReadAttachments' directory-wide
+    // scan safe to use as-is.
+    std::unordered_set<std::string> declaredInThisReport;
+    for (const std::string& key : ExtractDeclaredCaseKeys(reportXml)) {
+        declaredInThisReport.insert(key);
+    }
+
     std::vector<StoredAttachment> attachments = ReadAttachments(config.dir);
 
     nlohmann::json attachmentsJson = nlohmann::json::array();
     for (const auto& a : attachments) {
+        if (declaredInThisReport.count(a.caseKey) == 0) {
+            continue;
+        }
         attachmentsJson.push_back({{"caseKey", a.caseKey},
                                     {"filename", a.filename},
                                     {"contentType", a.contentType},

@@ -83,6 +83,21 @@ TEST(ConfigTest, TokenFlagOverridesEnvVar) {
     EXPECT_EQ(config.token, "t0k3n");
 }
 
+TEST(ConfigTest, MissingSettingErrorMessageHasNoDoubledPrefix) {
+    // main.cc's catch site prints "testpulse: " + e.what() -- the
+    // exception message itself must not also carry that prefix, or the
+    // real CLI prints "testpulse: testpulse: --url is required".
+    CliFlags flags;
+    flags.token = "t0k3n";
+    flags.project = "LOGIN";
+    try {
+        ResolveConfig(flags, EnvFrom({}));
+        FAIL() << "expected std::invalid_argument";
+    } catch (const std::invalid_argument& e) {
+        EXPECT_EQ(std::string(e.what()).find("testpulse:"), std::string::npos) << e.what();
+    }
+}
+
 TEST(ConfigTest, MissingUrlThrows) {
     CliFlags flags;
     flags.token = "t0k3n";
